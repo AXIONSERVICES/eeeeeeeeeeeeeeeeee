@@ -10,6 +10,16 @@ local busy = false
 local lastJob = nil
 local notified = {}
 
+
+local serverListCache = {}
+local lastServerFetch = 0
+local CACHE_DURATION = 30
+local botId = math.random(1000, 9999)
+
+local serverJoinTime = tick()
+local SCAN_DURATION = 5 
+local currentServerScanned = false
+
 function getWebhookForMoney(moneyNum)
     if moneyNum >= MONEY_RANGES.HIGH then
         return webhook_10m_plus
@@ -44,7 +54,7 @@ function sendDiscordEmbed(title, desc, color, fields, webhookUrl, shouldPing)
         fields = fields,
         timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
         footer = {
-            text = "Made by @Flx7mod"
+            text = "Made by @flx7mod"
         }
     }
     
@@ -122,8 +132,45 @@ end
 function getPlayerCount()
     local players = game:GetService("Players")
     local count = #players:GetPlayers()
-    local max = game.PlaceId and 8 or 8
+    local max = 8
     return string.format("%d/%d", count, max)
+end
+
+function getRandomDelay()
+    return math.random(100, 500) / 1000
+end
+
+function getServerList()
+    local currentTime = tick()
+    if currentTime - lastServerFetch < CACHE_DURATION and serverListCache.data then
+        return serverListCache
+    end
+    
+    local success, serverInfo = pcall(function()
+        return game:GetService("HttpService"):JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Asc&limit=100"))
+    end)
+    
+    if success and serverInfo then
+        serverListCache = serverInfo
+        lastServerFetch = currentTime
+    end
+    
+    return serverListCache
+end
+
+function selectOptimalServer(servers)
+    if #servers == 0 then return nil end
+    
+    table.sort(servers, function(a, b)
+        return a.playing > b.playing
+    end)
+    
+    local topServers = {}
+    for i = 1, math.min(5, #servers) do
+        table.insert(topServers, servers[i])
+    end
+    
+    return topServers[math.random(1, #topServers)]
 end
 
 function findBestBrainrot()
@@ -184,10 +231,11 @@ end
 function hopServer()
     local teleport = game:GetService("TeleportService")
     local players = game:GetService("Players")
-    local http = game:GetService("HttpService")
     
     local currentJob = game.JobId
     local placeId = game.PlaceId
+    
+    wait(getRandomDelay())
     
     local maxTries = 2
     local tries = 0
@@ -195,11 +243,9 @@ function hopServer()
     while tries < maxTries do
         tries = tries + 1
         
-        local success, serverInfo = pcall(function()
-            return http:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"))
-        end)
+        local serverInfo = getServerList()
         
-        if success and serverInfo and serverInfo.data then
+        if serverInfo and serverInfo.data then
             local goodServers = {}
             for _, server in pairs(serverInfo.data) do
                 if server.id and server.playing and server.playing < server.maxPlayers and server.playing >= 1 and not visitedServers[server.id] then
@@ -208,30 +254,36 @@ function hopServer()
             end
             
             if #goodServers > 0 then
-                local randomServer = goodServers[math.random(1, #goodServers)]
-
-                visitedServers[randomServer.id] = true
-                local visitedCount = 0
-                for _ in pairs(visitedServers) do
-                    visitedCount = visitedCount + 1
-                end
-                
-                if visitedCount > 5 then
-                    local oldestServer = nil
-                    for serverId in pairs(visitedServers) do
-                        if not oldestServer then
-                            oldestServer = serverId
+                local selectedServer = selectOptimalServer(goodServers)
+                if selectedServer then
+                    visitedServers[selectedServer.id] = true
+                    
+                    local visitedCount = 0
+                    for _ in pairs(visitedServers) do
+                        visitedCount = visitedCount + 1
+                    end
+                    
+                    if visitedCount > 10 then
+                        local serversToRemove = {}
+                        local count = 0
+                        for serverId in pairs(visitedServers) do
+                            table.insert(serversToRemove, serverId)
+                            count = count + 1
+                            if count >= 5 then break end
+                        end
+                        for _, serverId in pairs(serversToRemove) do
+                            visitedServers[serverId] = nil
                         end
                     end
-                    if oldestServer then
-                        visitedServers[oldestServer] = nil
-                    end
+                                    
+                    pcall(function()
+                        teleport:TeleportToPlaceInstance(placeId, selectedServer.id, players.LocalPlayer)
+                    end)
+                    
+                    serverJoinTime = tick()
+                    currentServerScanned = false
+                    return
                 end
-                                
-                pcall(function()
-                    teleport:TeleportToPlaceInstance(placeId, randomServer.id, players.LocalPlayer)
-                end)
-                return
             end
         end
         wait(0.001)
@@ -255,7 +307,7 @@ function notifyBrainrot()
     
     if not success then
         print("Error finding brainrot:", bestBrainrot)
-        hopServer()
+        checkAndHopServer()
         spawn(function()
             wait(0.5)
             busy = false
@@ -266,11 +318,12 @@ function notifyBrainrot()
     if bestBrainrot then
         local players = getPlayerCount()
         local jobId = game.JobId or "Unknown"
-        local brainrotKey = jobId .. "_" .. bestBrainrot.name .. "_" .. bestBrainrot.moneyPerSec
+        local brainrotKey = jobId .. "_" .. bestBrainrot.name .. "_" .. bestBrainrot.moneyPerSec .. "_" .. botId
         
         if not notified[brainrotKey] then
             notified[brainrotKey] = true
             lastJob = jobId
+            currentServerScanned = true
             
             local targetWebhook = getWebhookForMoney(bestBrainrot.numericMPS)
             local shouldPing = bestBrainrot.numericMPS >= MONEY_RANGES.HIGH
@@ -303,17 +356,19 @@ function notifyBrainrot()
                 },
                 {
                     name = "Join Script (PC)",
-                    value = "```game:GetService(\"TeleportService\"):TeleportToPlaceInstance(109983668079237,\"" .. jobId .. "\",game.Players.LocalPlayer)```",
+                    value = "```game:GetService(\"TeleportService\"):TeleportToPlaceInstance(" .. game.PlaceId .. ",\"" .. jobId .. "\",game.Players.LocalPlayer)```",
                     inline = false
                 }
             }
             
-            sendDiscordEmbed("Private Notifier", "", 0x8aaef2, fields, targetWebhook, shouldPing)
+            spawn(function()
+                sendDiscordEmbed("Private Notifier", "", 0x8aaef2, fields, targetWebhook, shouldPing)
+            end)
         end
         
-        hopServer()
+        checkAndHopServer()
     else
-        hopServer()
+        checkAndHopServer()
     end
     
     spawn(function()
@@ -322,16 +377,27 @@ function notifyBrainrot()
     end)
 end
 
+function checkAndHopServer()
+    local currentTime = tick()
+    local timeInServer = currentTime - serverJoinTime
+    
+    if timeInServer < SCAN_DURATION then
+        return
+    end
+    
+    hopServer()
+end
+
 function retryLoop()
     while true do
-        wait(0.1)
+        wait(0.5)
         local success, error = pcall(function()
             notifyBrainrot()
         end)
         
         if not success then
             print("Error in retryLoop:", error)
-            wait(0.5)
+            wait(getRandomDelay())
         end
     end
 end
