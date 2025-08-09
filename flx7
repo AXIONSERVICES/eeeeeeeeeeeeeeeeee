@@ -1,6 +1,6 @@
 local MIN_MONEY_THRESHOLD = 100000
 local MONEY_RANGES = {
-    LOW = 1000000,
+    LOW = 5000000,
     HIGH = 10000000
 }
 
