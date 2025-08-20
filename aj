@@ -2,9 +2,10 @@ local HttpService = game:GetService("HttpService")
 local TeleportService = game:GetService("TeleportService")
 local Players = game:GetService("Players")
 
--- Two different webhooks
+-- Three different webhooks
 local highWebhookURL = "https://discord.com/api/webhooks/1407314598520029204/BtGzGDMjk2f2TmxRdqQO71mgBpH7RI8mLTZkrlBYh7aIh43DvtZXH6gM3HwVNEQC5hLm"
 local midWebhookURL  = "https://discord.com/api/webhooks/1407353026145947659/nhjJPETM_buCwGN-_6kmEso1oT83q_IlWbySuhweNzgaCWBTLnQqje7sKMad-il5IhIS"
+local lowWebhookURL  = "https://discord.com/api/webhooks/1407552714723819650/8TLtds2wn7CPuO9sCOMxNip8ew5Gg85n3ZYCXZ51TZyy8k5dbWELptRumYPKDaCNvC46"
 
 local PLACE_ID = game.PlaceId
 local currentJobId = game.JobId
@@ -48,8 +49,10 @@ local function sendDiscordWebhook(nameText, valueText, jobId, numericValue)
         webhookURL = highWebhookURL
     elseif numericValue >= 1e6 and numericValue < 10e6 then -- 1m–10m
         webhookURL = midWebhookURL
+    elseif numericValue >= 1e5 and numericValue < 1e6 then -- 100k–1m
+        webhookURL = lowWebhookURL
     else
-        return -- ignore pets < 1m/s
+        return -- ignore pets < 100k/s
     end
 
     local payload = HttpService:JSONEncode({
@@ -129,7 +132,7 @@ local function scanAllBrainrots()
                                 )
                                 brainrotData.numericValue = numericValue
 
-                                if numericValue >= 1e6 then
+                                if numericValue >= 1e5 then
                                     table.insert(foundPets, brainrotData)
                                 end
                             end
