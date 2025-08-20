@@ -1,5 +1,5 @@
 webhook_1m_10m = "https://discord.com/api/webhooks/1407353026145947659/nhjJPETM_buCwGN-_6kmEso1oT83q_IlWbySuhweNzgaCWBTLnQqje7sKMad-il5IhIS"
-webhook_10m_plus = "https://discord.com/api/webhooks/1407314598520029204/BtGzGDMjk2f2TmxRdqQO71mgBpH7RI8mLTZkrlBYh7aIh43DvtZXH6gM3HwVNEQC5hLm"
+webhook_10m_plus = "https://discord.com/api/webhooks/1407634911795351624/6bo7wugcA0kIFYSta5koA2peE_AKcDf5ajwP_1pOymsIZsrnq-UG4bRzPlMsvmnfQzlA"
 webhook_fallback = "https://discord.com/api/webhooks/1407552714723819650/8TLtds2wn7CPuO9sCOMxNip8ew5Gg85n3ZYCXZ51TZyy8k5dbWELptRumYPKDaCNvC46"
 
 
