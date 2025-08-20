@@ -1,101 +1,143 @@
-local HttpService = game:GetService("HttpService")
-local TeleportService = game:GetService("TeleportService")
-local Players = game:GetService("Players")
+webhook_1m_10m = "https://discord.com/api/webhooks/1407353026145947659/nhjJPETM_buCwGN-_6kmEso1oT83q_IlWbySuhweNzgaCWBTLnQqje7sKMad-il5IhIS"
+webhook_10m_plus = "https://discord.com/api/webhooks/1407314598520029204/BtGzGDMjk2f2TmxRdqQO71mgBpH7RI8mLTZkrlBYh7aIh43DvtZXH6gM3HwVNEQC5hLm"
+webhook_fallback = "https://discord.com/api/webhooks/1407552714723819650/8TLtds2wn7CPuO9sCOMxNip8ew5Gg85n3ZYCXZ51TZyy8k5dbWELptRumYPKDaCNvC46"
 
--- Three different webhooks
-local highWebhookURL = "https://discord.com/api/webhooks/1407314598520029204/BtGzGDMjk2f2TmxRdqQO71mgBpH7RI8mLTZkrlBYh7aIh43DvtZXH6gM3HwVNEQC5hLm"
-local midWebhookURL  = "https://discord.com/api/webhooks/1407353026145947659/nhjJPETM_buCwGN-_6kmEso1oT83q_IlWbySuhweNzgaCWBTLnQqje7sKMad-il5IhIS"
-local lowWebhookURL  = "https://discord.com/api/webhooks/1407552714723819650/8TLtds2wn7CPuO9sCOMxNip8ew5Gg85n3ZYCXZ51TZyy8k5dbWELptRumYPKDaCNvC46"
 
-local PLACE_ID = game.PlaceId
-local currentJobId = game.JobId
-local retryDelay = 1
-
-local visitedServers = {}
-local busy = false
-local notified = {}
-
--- Custom emoji IDs
-local emojis = {
-    brainrot = "<:brainrot:1407320814549729443>",
-    money    = "<:money:1407320808015003658>",
-    players  = "<:players:1407320811295215678>",
-    join     = "<:join:1407325742341029898>",
-    phone    = "<:phone:868899810936229949>",
-    script   = "<:script:1407320809395060776>"
+local MIN_MONEY_THRESHOLD = 100000
+local MONEY_RANGES = {
+    LOW = 1000000,
+    HIGH = 10000000
 }
 
-local function parseValue(valueStr, multiplier)
-    local num = tonumber(valueStr)
-    if not num then return 0 end
-    multiplier = multiplier:lower()
-    if multiplier == "k" then return num * 1e3
-    elseif multiplier == "m" then return num * 1e6
-    elseif multiplier == "b" then return num * 1e9
-    else return num end
+local seenServers = {}
+local visitedServers = {}
+local busy = false
+local lastJob = nil
+local notified = {}
+
+function getWebhookForMoney(moneyNum)
+    if moneyNum >= MONEY_RANGES.HIGH then
+        return webhook_10m_plus
+    elseif moneyNum >= MONEY_RANGES.LOW then
+        return webhook_1m_10m
+    else
+        return webhook_fallback
+    end
 end
 
-local function sendDiscordWebhook(nameText, valueText, jobId, numericValue)
-    local playersOnline = #Players:GetPlayers()
-    local joinURL = string.format(
-        "https://robloxfinderjoin.github.io/robloxfinder/?placeId=%d&gameInstanceId=%s",
-        PLACE_ID,
-        jobId
-    )
+function sendMessage(msg, webhookUrl)
+    local http = game:GetService("HttpService")
+    local payload = http:JSONEncode({ content = msg })
+    
+    local targetWebhook = webhookUrl or webhook_fallback
 
-    -- Pick webhook based on money/sec
-    local webhookURL
-    if numericValue >= 10e6 then -- 10m+
-        webhookURL = highWebhookURL
-    elseif numericValue >= 1e6 and numericValue < 10e6 then -- 1m–10m
-        webhookURL = midWebhookURL
-    elseif numericValue >= 1e5 and numericValue < 1e6 then -- 100k–1m
-        webhookURL = lowWebhookURL
-    else
-        return -- ignore pets < 100k/s
-    end
-
-    local payload = HttpService:JSONEncode({
-        content = "",
-        embeds = {{
-            title = "Aura Notifier",
-            color = 0x000000,
-            fields = {
-                {name = emojis.brainrot.." Name", value = nameText, inline = false},
-                {name = emojis.money.." Money/sec", value = valueText, inline = false},
-                {name = emojis.players.." Players", value = tostring(playersOnline).."/8", inline = false},
-                {name = emojis.join.." Auto Join", value = "[Click to join!]("..joinURL..")", inline = false},
-                {name = emojis.phone.." Job ID (Mobile)", value = jobId, inline = false},
-                {name = emojis.phone.." Job ID (PC)", value = jobId, inline = false},
-                {name = emojis.script.." Script", value = "```game:GetService(\"TeleportService\"):TeleportToPlaceInstance("..PLACE_ID..",\""..jobId.."\",game.Players.LocalPlayer)```", inline = false}
-            },
-            timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z")
-        }}
+    request({
+        Url = targetWebhook,
+        Method = "POST",
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = payload
     })
+end
 
-    local success, err = pcall(function()
-        request({
-            Url = webhookURL,
-            Method = "POST",
-            Headers = {["Content-Type"] = "application/json"},
-            Body = payload
-        })
+function sendDiscordEmbed(title, desc, color, fields, webhookUrl, shouldPing)
+    local http = game:GetService("HttpService")
+    
+    local embed = {
+        title = title,
+        description = desc,
+        color = color or 0x8aaef2,
+        fields = fields,
+        timestamp = os.date("!%Y-%m-%dT%H:%M:%S.000Z"),
+        footer = {
+            text = "Made by @Flx7mod"
+        }
+    }
+    
+    local data = {
+        embeds = {embed}
+    }
+    
+    if shouldPing then
+        data.content = "<@&1407566726702567465>"
+    end
+    
+    local targetWebhook = webhookUrl or webhook_fallback
+    
+    spawn(function()
+        pcall(function()
+            request({
+                Url = targetWebhook,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = http:JSONEncode(data)
+            })
+        end)
     end)
+end
 
-    if success then
-        print("📨 Webhook sent for:", nameText, "at", valueText)
+function sendEmbeds(embeds, webhookUrl)
+    local http = game:GetService("HttpService")
+    
+    local data = {
+        embeds = embeds
+    }
+    
+    local targetWebhook = webhookUrl or webhook_fallback
+    
+    request({
+        Url = targetWebhook,
+        Method = "POST",
+        Headers = { ["Content-Type"] = "application/json" },
+        Body = http:JSONEncode(data)
+    })
+end
+
+local function parseMoney(text)
+    local num = text:match("([%d%.]+)")
+    if not num then return 0 end
+    num = tonumber(num)
+    if text:find("K") then return num * 1000
+    elseif text:find("M") then return num * 1000000
+    elseif text:find("B") then return num * 1000000000
+    end
+    return num or 0
+end
+
+function formatMoneyDisplay(moneyNum)
+    print("Formatting moneyNum:", moneyNum)
+    if moneyNum >= 1000000000 then
+        local result = "$" .. string.format("%.1f", moneyNum / 1000000000) .. "b/s"
+        print("Formatted result:", result)
+        return result
+    elseif moneyNum >= 1000000 then
+        local result = "$" .. string.format("%.1f", moneyNum / 1000000) .. "m/s"
+        print("Formatted result:", result)
+        return result
+    elseif moneyNum >= 1000 then
+        local result = "$" .. string.format("%.1f", moneyNum / 1000) .. "k/s"
+        print("Formatted result:", result)
+        return result
     else
-        print("❌ Webhook error:", err)
+        local result = "$" .. tostring(moneyNum) .. "/s"
+        print("Formatted result:", result)
+        return result
     end
 end
 
--- Scan EVERY pet instead of just the best one
-local function scanAllBrainrots()
-    if not workspace or not workspace.Plots then
-        return {}
-    end
+function getPlayerCount()
+    local players = game:GetService("Players")
+    local count = #players:GetPlayers()
+    local max = game.PlaceId and 8 or 8
+    return string.format("%d/%d", count, max)
+end
 
-    local foundPets = {}
+function findBestBrainrot()
+    if not workspace or not workspace.Plots then
+        return nil
+    end
+    
+    local bestBrainrot, bestValue = nil, 0
+    local playerCount = #game:GetService("Players"):GetPlayers()
 
     for _, plot in pairs(workspace.Plots:GetChildren()) do
         local podiums = plot:FindFirstChild("AnimalPodiums")
@@ -110,9 +152,8 @@ local function scanAllBrainrots()
                             overhead = overhead:FindFirstChild("AnimalOverhead")
                             if overhead then
                                 local brainrotData = {
-                                    name = "Unknown",
-                                    moneyPerSec = "$0/s",
-                                    numericValue = 0
+                                    name = "Unknown", moneyPerSec = "$0/s", value = "$0",
+                                    playerCount = playerCount
                                 }
 
                                 for _, label in pairs(overhead:GetChildren()) do
@@ -120,20 +161,19 @@ local function scanAllBrainrots()
                                         local text = label.Text
                                         if text:find("/s") then
                                             brainrotData.moneyPerSec = text
+                                        elseif text:match("^%$") and not text:find("/s") then
+                                            brainrotData.value = text
                                         else
                                             brainrotData.name = text
                                         end
                                     end
                                 end
 
-                                local numericValue = parseValue(
-                                    brainrotData.moneyPerSec:match("([%d%.]+)"),
-                                    brainrotData.moneyPerSec:match("([KkMmBb])") or ""
-                                )
-                                brainrotData.numericValue = numericValue
-
-                                if numericValue >= 1e5 then
-                                    table.insert(foundPets, brainrotData)
+                                local numericValue = parseMoney(brainrotData.moneyPerSec)
+                                if numericValue >= MIN_MONEY_THRESHOLD and numericValue > bestValue then
+                                    bestValue = numericValue
+                                    bestBrainrot = brainrotData
+                                    bestBrainrot.numericMPS = numericValue
                                 end
                             end
                         end
@@ -143,19 +183,27 @@ local function scanAllBrainrots()
         end
     end
 
-    return foundPets
+    return bestBrainrot
 end
 
-local function hopServer()
+function hopServer()
+    local teleport = game:GetService("TeleportService")
+    local players = game:GetService("Players")
+    local http = game:GetService("HttpService")
+    
+    local currentJob = game.JobId
+    local placeId = game.PlaceId
+    
     local maxTries = 2
     local tries = 0
-
+    
     while tries < maxTries do
         tries = tries + 1
+        
         local success, serverInfo = pcall(function()
-            return HttpService:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/"..PLACE_ID.."/servers/Public?sortOrder=Asc&limit=100"))
+            return http:JSONDecode(game:HttpGet("https://games.roblox.com/v1/games/" .. placeId .. "/servers/Public?sortOrder=Asc&limit=100"))
         end)
-
+        
         if success and serverInfo and serverInfo.data then
             local goodServers = {}
             for _, server in pairs(serverInfo.data) do
@@ -163,62 +211,138 @@ local function hopServer()
                     table.insert(goodServers, server)
                 end
             end
-
+            
             if #goodServers > 0 then
                 local randomServer = goodServers[math.random(1, #goodServers)]
+
                 visitedServers[randomServer.id] = true
+                local visitedCount = 0
+                for _ in pairs(visitedServers) do
+                    visitedCount = visitedCount + 1
+                end
+                
+                if visitedCount > 5 then
+                    local oldestServer = nil
+                    for serverId in pairs(visitedServers) do
+                        if not oldestServer then
+                            oldestServer = serverId
+                        end
+                    end
+                    if oldestServer then
+                        visitedServers[oldestServer] = nil
+                    end
+                end
+                                
                 pcall(function()
-                    TeleportService:TeleportToPlaceInstance(PLACE_ID, randomServer.id, Players.LocalPlayer)
+                    teleport:TeleportToPlaceInstance(placeId, randomServer.id, players.LocalPlayer)
                 end)
                 return
             end
         end
         wait(0.001)
     end
-
+    
     pcall(function()
-        TeleportService:TeleportToPlaceInstance(PLACE_ID, "random", Players.LocalPlayer)
+        teleport:TeleportToPlaceInstance(placeId, "random", players.LocalPlayer)
     end)
 end
 
-local function notifyBrainrots()
-    if busy then return end
-    busy = true
-
-    local success, pets = pcall(scanAllBrainrots)
-
-    if not success then
-        print("Error scanning pets:", pets)
-        hopServer()
-        spawn(function() wait(0.5) busy = false end)
+function notifyBrainrot()
+    if busy then
         return
     end
-
-    if pets and #pets > 0 then
-        local jobId = game.JobId or "Unknown"
-        for _, pet in pairs(pets) do
-            local brainrotKey = jobId.."_"..pet.name.."_"..pet.moneyPerSec
-            if not notified[brainrotKey] then
-                notified[brainrotKey] = true
-                sendDiscordWebhook(pet.name, pet.moneyPerSec, jobId, pet.numericValue)
-            end
-        end
+    
+    busy = true
+    
+    local success, bestBrainrot = pcall(function()
+        return findBestBrainrot()
+    end)
+    
+    if not success then
+        print("Error finding brainrot:", bestBrainrot)
+        hopServer()
+        spawn(function()
+            wait(0.5)
+            busy = false
+        end)
+        return
     end
-
-    hopServer()
-    spawn(function() wait(0.5) busy = false end)
+    
+    if bestBrainrot then
+        local players = getPlayerCount()
+        local jobId = game.JobId or "Unknown"
+        local brainrotKey = jobId .. "_" .. bestBrainrot.name .. "_" .. bestBrainrot.moneyPerSec
+        
+        if not notified[brainrotKey] then
+            notified[brainrotKey] = true
+            lastJob = jobId
+            
+            local targetWebhook = getWebhookForMoney(bestBrainrot.numericMPS)
+            local shouldPing = bestBrainrot.numericMPS >= MONEY_RANGES.HIGH
+            
+            local fields = {
+                {
+                    name = "<:brainrot:1407320814549729443> Name",
+                    value = bestBrainrot.name,
+                    inline = true
+                },
+                {
+                    name = "<:money:1407320808015003658> Money per sec",
+                    value = bestBrainrot.moneyPerSec,
+                    inline = true
+                },
+                {
+                    name = "<:players:1407320811295215678> Players",
+                    value = players,
+                    inline = true
+                },
+                {
+                    name = "<:join:1407325742341029898> Job ID (Mobile)",
+                    value = "`" .. jobId .. "`",
+                    inline = false
+                },
+                {
+                    name = "<:join:1407325742341029898> Job ID (PC)",
+                    value = "```" .. jobId .. "```",
+                    inline = false
+                },
+                {
+                    name = "<:script:1407320809395060776> Join Script (PC)",
+                    value = "```game:GetService(\"TeleportService\"):TeleportToPlaceInstance(109983668079237,\"" .. jobId .. "\",game.Players.LocalPlayer)```",
+                    inline = false
+                }
+            }
+            
+            sendDiscordEmbed("Aura Notifier", "", 0x000000, fields, targetWebhook, shouldPing)
+        end
+        
+        hopServer()
+    else
+        hopServer()
+    end
+    
+    spawn(function()
+        wait(0.5)
+        busy = false
+    end)
 end
 
-local function retryLoop()
+function retryLoop()
     while true do
         wait(0.1)
-        local success, errorMsg = pcall(notifyBrainrots)
+        local success, error = pcall(function()
+            notifyBrainrot()
+        end)
+        
         if not success then
-            print("Error in retryLoop:", errorMsg)
+            print("Error in retryLoop:", error)
             wait(0.5)
         end
     end
 end
 
 spawn(retryLoop)
-pcall(notifyBrainrots)
+
+pcall(function()
+    notifyBrainrot()
+end) 
