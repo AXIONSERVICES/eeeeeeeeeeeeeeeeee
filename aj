@@ -58,7 +58,7 @@ function sendDiscordEmbed(title, desc, color, fields, webhookUrl, shouldPing)
     }
     
     if shouldPing then
-        data.content = "<@&1407566726702567465>"
+        data.content = "<@&1408279864003268628>"
     end
     
     local targetWebhook = webhookUrl or webhook_fallback
