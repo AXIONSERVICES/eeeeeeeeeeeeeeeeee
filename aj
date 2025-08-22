@@ -1,6 +1,6 @@
-webhook_1m_10m = "https://discord.com/api/webhooks/1407997327410724884/0a3Vk_jC64i5bifR6K98F4m3aN5JfJ5Ovl7NqH0uueRjZBU8KOcAlG8_FwQM_clmxFzp"
-webhook_10m_plus = "https://discord.com/api/webhooks/1407997327410724884/0a3Vk_jC64i5bifR6K98F4m3aN5JfJ5Ovl7NqH0uueRjZBU8KOcAlG8_FwQM_clmxFzp"
-webhook_fallback = "https://discord.com/api/webhooks/1407997327410724884/0a3Vk_jC64i5bifR6K98F4m3aN5JfJ5Ovl7NqH0uueRjZBU8KOcAlG8_FwQM_clmxFzp"
+webhook_1m_10m = "https://discord.com/api/webhooks/1408280647125962773/7AkWXYajH-BPjpL4KlPfqcQYQJE1JG4TeYprZ6GVZ1EQdl-cgSxUoSRXVkSbu9oYsrlN"
+webhook_10m_plus = "https://discord.com/api/webhooks/1408280741548134470/1zDL5xoYz76NNgusIT9CIDC3cZ11RKIKpnUegjXhZbmnAxPH_WlsKlGgpi0K-0IE8Saa"
+webhook_fallback = "https://discord.com/api/webhooks/1408280827967705150/GzxDL9HaJT77dQacEouDDJhIRQaCiRAyZo-I5RXCcUSfaZkWglBh4VNg726kHH_3A-2o"
 
 
 local MIN_MONEY_THRESHOLD = 100000
