@@ -1,5 +1,8 @@
 local Players = game:GetService("Players")
 
 Players.PlayerAdded:Connect(function(player)
-    player:Kick("Use the Updated Loadstring.")
+    task.wait(1)
+    
+    -- Kick the player with a custom message
+    player:Kick("You have been kicked, Use the new loadstring. discord.gg/flxhub")
 end)
